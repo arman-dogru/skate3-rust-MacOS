@@ -108,6 +108,12 @@ Prerequisites: Rust stable and CMake. With Homebrew, install CMake with `brew in
 ./scripts/build-macos.sh
 ```
 
-The executable is written to `target/release/skate3rust`. `PLAY.command` builds it when needed and launches it with the repository `assets/` directory.
+The executable is written to `target/release/skate3rust`. `PLAY.command` builds it when needed and launches it with the repository-local `assets/` directory.
 
-The native game code, Bevy/Metal renderer, SDL3 controller path, audio DSP, physics, map loading, and mod runtime are built natively for `aarch64-apple-darwin`. The Windows first-run installer/updater helpers are not part of the macOS build; for now, use an already prepared asset directory via `--assets DIRECTORY` or `SKATE3_ASSETS=/path/to/assets`.
+To use a prepared asset directory elsewhere, set `SKATE3_ASSETS` when launching, for example:
+
+```bash
+SKATE3_ASSETS=/path/to/prepared/assets ./target/release/skate3rust
+```
+
+The native game code, Bevy/Metal renderer, SDL3 controller path, audio DSP, physics, map loading, and mod runtime are built natively for `aarch64-apple-darwin`. The Windows first-run installer/updater helpers are not part of the macOS build yet, so the macOS port currently requires assets prepared by the existing extraction pipeline.
