@@ -19,248 +19,43 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Preserve port patch
+        run: cp .github/macos-port.patch /tmp/macos-port.patch
+
       - name: Import matching upstream source
         run: |
           git remote add upstream https://github.com/SK8-ENGINE/skate-3-rust-engine.git
           git fetch --depth=1 upstream af5640486253bd940d9b21c5029a9f835cd3e087
           git checkout --detach FETCH_HEAD
+
       - name: Apply macOS port
-        shell: bash
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          def replace(path, old, new):
-              p = Path(path)
-              s = p.read_text()
-              if old not in s:
-                  raise SystemExit(f"expected source not found in {path}")
-              p.write_text(s.replace(old, new, 1))
-
-          replace(
-              "crates/skate-game/src/app.rs",
-              'fn wgpu_features() -> WgpuFeatures {\n    let default = WgpuSettings::default().features;\n',
-              'fn wgpu_backends() -> Backends {\n    if cfg!(target_os = "macos") {\n        Backends::METAL\n    } else {\n        Backends::VULKAN\n    }\n}\n\nfn wgpu_features() -> WgpuFeatures {\n    let default = WgpuSettings::default().features;\n',
-          )
-          replace(
-              "crates/skate-game/src/app.rs",
-              'backends: Some(Backends::VULKAN),',
-              'backends: Some(wgpu_backends()),',
-          )
-          replace(
-              "crates/skate-game/src/main.rs",
-              'eprintln!("REPORT_META startup=map_fingerprint:{:016x} difficulty:{} multiplayer_requested:{} custom_appearance:{} renderer:Vulkan", config.map_fingerprint, config.difficulty.key(), config.multiplayer.host.is_some() || config.multiplayer.direct.is_some(), config.multiplayer.appearance.is_some());',
-              'eprintln!("REPORT_META startup=map_fingerprint:{:016x} difficulty:{} multiplayer_requested:{} custom_appearance:{} renderer:{}", config.map_fingerprint, config.difficulty.key(), config.multiplayer.host.is_some() || config.multiplayer.direct.is_some(), config.multiplayer.appearance.is_some(), if cfg!(target_os = "macos") { "Metal" } else { "Vulkan" });',
-          )
-          replace(
-              "crates/skate-game/src/setup.rs",
-              '    let setup = root.join("support/skate3setup.exe");\n    if !setup.is_file() {\n        return Err(\n            "This copy has not been set up. Use the complete Windows package, pass --assets DIRECTORY, or set SKATE3_ASSETS for development.".into(),\n        );\n    }\n',
-              '    #[cfg(windows)]\n    let setup = root.join("support/skate3setup.exe");\n    #[cfg(not(windows))]\n    let setup = root.join("support/skate3setup");\n    if !setup.is_file() {\n        #[cfg(target_os = "macos")]\n        return Err(\n            "This copy has not been set up. On macOS, pass --assets DIRECTORY or set SKATE3_ASSETS to a prepared asset directory.".into(),\n        );\n        #[cfg(not(target_os = "macos"))]\n        return Err(\n            "This copy has not been set up. Use the complete Windows package, pass --assets DIRECTORY, or set SKATE3_ASSETS for development.".into(),\n        );\n    }\n',
-          )
-
-          p = Path("crates/skate-game/src/updater.rs")
-          s = p.read_text()
-          s = s.replace(
-              'use std::{path::PathBuf, process::{Child, Command}, time::{SystemTime, UNIX_EPOCH}};',
-              'use std::{path::PathBuf, process::Child};\n#[cfg(windows)]\nuse std::{process::Command, time::{SystemTime, UNIX_EPOCH}};',
-              1,
-          )
-          s = s.replace(
-              'fn helper_command(recover: bool, automatic: bool) -> Result<(Command, PathBuf, PathBuf), String> {',
-              '#[cfg(windows)]\nfn helper_command(recover: bool, automatic: bool) -> Result<(Command, PathBuf, PathBuf), String> {',
-              1,
-          )
-          old = '''pub(crate) fn recover() -> Result<bool, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    if !exe.parent().is_some_and(|p| p.join(".update-transaction/journal.json").exists()) {
-        return Ok(false);
-    }
-    let (mut command, _, _) = helper_command(true, false)?;
-    command.spawn().map_err(|e| e.to_string())?;
-    Ok(true)
-}
-'''
-          new = '''pub(crate) fn recover() -> Result<bool, String> {
-    #[cfg(windows)]
-    {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        if !exe.parent().is_some_and(|p| p.join(".update-transaction/journal.json").exists()) {
-            return Ok(false);
-        }
-        let (mut command, _, _) = helper_command(true, false)?;
-        command.spawn().map_err(|e| e.to_string())?;
-        Ok(true)
-    }
-    #[cfg(not(windows))]
-    {
-        Ok(false)
-    }
-}
-'''
-          if old not in s:
-              raise SystemExit("expected updater recover source not found")
-          s = s.replace(old, new, 1)
-          old = '''    pub(crate) fn open(&mut self, automatic: bool) -> String {
-        if self.child.is_some() { return "Updates window is already open.".into(); }
-        match helper_command(false, automatic).and_then(|(mut cmd, signal, temp)| {
-            cmd.spawn().map(|child| (child, signal, temp)).map_err(|e| e.to_string())
-        }) {
-            Ok((child, signal, temp)) => {
-                self.child = Some(child);
-                self.signal = Some(signal);
-                self.temporary = Some(temp);
-                "Updates opened in a separate window.".into()
-            }
-            Err(error) => error,
-        }
-    }
-'''
-          new = '''    pub(crate) fn open(&mut self, automatic: bool) -> String {
-        #[cfg(windows)]
-        {
-            if self.child.is_some() { return "Updates window is already open.".into(); }
-            match helper_command(false, automatic).and_then(|(mut cmd, signal, temp)| {
-                cmd.spawn().map(|child| (child, signal, temp)).map_err(|e| e.to_string())
-            }) {
-                Ok((child, signal, temp)) => {
-                    self.child = Some(child);
-                    self.signal = Some(signal);
-                    self.temporary = Some(temp);
-                    "Updates opened in a separate window.".into()
-                }
-                Err(error) => error,
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = automatic;
-            "Automatic updates are not available on this platform; update from GitHub releases.".into()
-        }
-    }
-'''
-          if old not in s:
-              raise SystemExit("expected updater open source not found")
-          p.write_text(s.replace(old, new, 1))
-
-          replace(
-              "crates/skate-game/src/custom_models.rs",
-              'pub(crate) fn library_path() -> PathBuf {\n    std::env::var_os("LOCALAPPDATA")',
-              'pub(crate) fn library_path() -> PathBuf {\n    #[cfg(target_os = "macos")]\n    if let Some(home) = std::env::var_os("HOME") {\n        return PathBuf::from(home)\n            .join("Library/Application Support/Skate3RustEngine/custom-characters");\n    }\n    std::env::var_os("LOCALAPPDATA")',
-          )
-          replace(
-              "crates/skate-game/src/custom_models.rs",
-              '.join("support/skate3setup.exe");\n    if !executable.is_file() {\n        return Err("Character importer is missing. Restore support/skate3setup.exe from the complete Windows package.".into());\n    }',
-              '.join(if cfg!(windows) { "support/skate3setup.exe" } else { "support/skate3setup" });\n    if !executable.is_file() {\n        return Err(if cfg!(target_os = "macos") {\n            "Character importer is unavailable in this macOS build.".into()\n        } else {\n            "Character importer is missing. Restore support/skate3setup.exe from the complete Windows package.".into()\n        });\n    }',
-          )
-          replace(
-              "crates/skate-game/src/crash_report.rs",
-              '    let roots = [\n        std::env::var_os("LOCALAPPDATA")\n            .map(PathBuf::from)\n            .unwrap_or_else(std::env::temp_dir),\n        std::env::temp_dir(),\n    ];',
-              '    #[cfg(target_os = "macos")]\n    let primary = std::env::var_os("HOME")\n        .map(PathBuf::from)\n        .map(|home| home.join("Library/Application Support"))\n        .unwrap_or_else(std::env::temp_dir);\n    #[cfg(not(target_os = "macos"))]\n    let primary = std::env::var_os("LOCALAPPDATA")\n        .map(PathBuf::from)\n        .unwrap_or_else(std::env::temp_dir);\n    let roots = [primary, std::env::temp_dir()];',
-          )
-          replace(
-              "crates/skate-game/src/crash_report.rs",
-              '    #[cfg(not(windows))]\n    {\n        let _ = path;\n    }',
-              '    #[cfg(target_os = "macos")]\n    {\n        let status = Command::new("open").arg("-R").arg(path).status()?;\n        if !status.success() {\n            return Err(std::io::Error::other("Finder could not reveal the crash report"));\n        }\n    }\n    #[cfg(not(any(windows, target_os = "macos")))]\n    {\n        let _ = path;\n    }',
-          )
-          replace(
-              "crates/skate-game/src/multiplayer/transport.rs",
-              '        let helper = dir.join("steam-relay/skate-steam-relay.exe");\n        if !helper.is_file() || !dir.join("steam-relay/steam_api64.dll").is_file() {',
-              '        let helper = dir.join(if cfg!(windows) {\n            "steam-relay/skate-steam-relay.exe"\n        } else {\n            "steam-relay/skate-steam-relay"\n        });\n        let steam_api = dir.join(if cfg!(target_os = "macos") {\n            "steam-relay/libsteam_api.dylib"\n        } else if cfg!(windows) {\n            "steam-relay/steam_api64.dll"\n        } else {\n            "steam-relay/libsteam_api.so"\n        });\n        if !helper.is_file() || !steam_api.is_file() {',
-          )
-
-          build = '''#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
-  echo "Build-MacOS.sh requires an Apple Silicon Mac." >&2
-  exit 2
-fi
-export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
-cargo build --release --locked -p skate-game --bin skate3rust --no-default-features
-OUT="$ROOT/target/skate3rust-macos-arm64"
-APP="$OUT/Skate3Rust.app"
-rm -rf "$OUT"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$ROOT/target/release/skate3rust" "$APP/Contents/MacOS/skate3rust"
-cp "$ROOT/docs/images/skating-crab.png" "$APP/Contents/Resources/skating-crab.png"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleDisplayName</key><string>Skate 3 Rust Engine</string>
-<key>CFBundleExecutable</key><string>skate3rust</string>
-<key>CFBundleIdentifier</key><string>dev.sk8engine.skate3rust</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>LSMinimumSystemVersion</key><string>13.0</string>
-<key>NSHighResolutionCapable</key><true/>
-</dict></plist>
-PLIST
-echo "Built $APP"
-echo "Run: '$APP/Contents/MacOS/skate3rust' --assets /path/to/prepared/assets"
-'''
-          Path("scripts/Build-MacOS.sh").write_text(build)
-
-          ci = '''name: macOS ARM64
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: macos-15
-    timeout-minutes: 60
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "13.0"
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify Apple Silicon runner
-        run: |
-          test "$(uname -s)" = Darwin
-          test "$(uname -m)" = arm64
-          rustc -vV
-      - name: Check game binaries
-        run: cargo check --locked -p skate-game --bins --no-default-features
-      - name: Run portable crate tests
-        run: cargo test --locked -p skate-core -p skate-audio -p skate-audio-fma -p skate-data -p skate-dynamics -p skate-mods -p skate-net
-      - name: Build native release
-        run: cargo build --release --locked -p skate-game --bin skate3rust --no-default-features
-      - name: Verify Mach-O architecture
-        run: file target/release/skate3rust | grep -q arm64
-'''
-          Path(".github/workflows/macos-arm64.yml").write_text(ci)
-
-          replace(
-              "README.md",
-              '## Build\n\nRequires Windows, Rust with the MSVC toolchain, and LLVM installed in its default\nlocation.',
-              '## Build\n\n### macOS (Apple Silicon)\n\nRequires macOS 13 or newer, Xcode Command Line Tools, and a current Rust toolchain. Run `scripts/Build-MacOS.sh` on an M-series Mac. The game uses Metal through wgpu and SDL3 for controller input. The Windows first-run setup/updater helpers are not used on macOS; launch with a prepared asset directory using `--assets /path/to/assets` or set `SKATE3_ASSETS`. Skate 3 assets are not included.\n\n### Windows\n\nRequires Windows, Rust with the MSVC toolchain, and LLVM installed in its default\nlocation.',
-          )
-          PY
-          chmod +x scripts/Build-MacOS.sh
+          git apply --check /tmp/macos-port.patch
+          git apply /tmp/macos-port.patch
           git diff --check
+
       - name: Verify Apple Silicon runner
         run: |
           test "$(uname -s)" = Darwin
           test "$(uname -m)" = arm64
           sw_vers
           rustc -vV
+
       - name: Check game binaries
         run: cargo check --locked -p skate-game --bins --no-default-features
+
       - name: Run portable crate tests
         run: cargo test --locked -p skate-core -p skate-audio -p skate-audio-fma -p skate-data -p skate-dynamics -p skate-mods -p skate-net
+
       - name: Build native release
         run: cargo build --release --locked -p skate-game --bin skate3rust --no-default-features
+
       - name: Verify Mach-O architecture
         run: |
           file target/release/skate3rust
           file target/release/skate3rust | grep -q arm64
+
       - name: Commit and push port
         run: |
           git config user.name "ChatGPT macOS port"
