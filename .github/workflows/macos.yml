@@ -1,0 +1,38 @@
+name: macOS Apple Silicon
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-arm64
+      - name: Toolchain and architecture
+        run: |
+          uname -a
+          test "$(uname -m)" = arm64
+          rustc -Vv
+          cmake --version
+      - name: Check game
+        run: cargo check -p skate-game --bin skate3rust --no-default-features
+      - name: Build game
+        run: cargo build -p skate-game --bin skate3rust --release --no-default-features
+      - name: Check portable libraries
+        run: cargo test -p skate-core -p skate-audio-fma -p skate-audio -p skate-net -p skate-dynamics -p skate-mods --lib --no-fail-fast
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skate3rust-macos-arm64
+          path: target/release/skate3rust
+          if-no-files-found: error
