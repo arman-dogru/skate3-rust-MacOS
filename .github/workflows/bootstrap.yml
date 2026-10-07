@@ -1,0 +1,146 @@
+name: Bootstrap macOS port
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Import upstream source and add Apple Silicon CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euxo pipefail
+          git clone https://github.com/SK8-ENGINE/skate-3-rust-engine.git source
+          cd source
+          git checkout af5640486253bd940d9b21c5029a9f835cd3e087
+
+          # This fork targets macOS. Disable the upstream Windows publishing workflow.
+          rm -f .github/workflows/release.yml
+
+          mkdir -p .github/workflows scripts
+          cat > .github/workflows/macos.yml <<'YAML'
+          name: macOS Apple Silicon
+
+          on:
+            push:
+              branches: ['**']
+            pull_request:
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            macos-arm64:
+              runs-on: macos-14
+              timeout-minutes: 90
+              steps:
+                - uses: actions/checkout@v4
+                - uses: dtolnay/rust-toolchain@stable
+                - uses: Swatinem/rust-cache@v2
+                  with:
+                    shared-key: macos-arm64
+                - name: Toolchain and architecture
+                  run: |
+                    uname -a
+                    uname -m
+                    rustc -Vv
+                    cmake --version
+                - name: Check game
+                  run: cargo check -p skate-game --bin skate3rust --no-default-features
+                - name: Build game
+                  run: cargo build -p skate-game --bin skate3rust --release --no-default-features
+                - name: Check portable libraries
+                  run: cargo test -p skate-core -p skate-audio-fma -p skate-audio -p skate-net -p skate-dynamics -p skate-mods --lib --no-fail-fast
+                - uses: actions/upload-artifact@v4
+                  with:
+                    name: skate3rust-macos-arm64
+                    path: target/release/skate3rust
+                    if-no-files-found: error
+          YAML
+
+          cat > scripts/build-macos.sh <<'SH'
+          #!/bin/bash
+          set -euo pipefail
+          cd "$(dirname "$0")/.."
+          if [[ "$(uname -s)" != "Darwin" ]]; then
+            echo "This build script must run on macOS." >&2
+            exit 2
+          fi
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "Apple Silicon (arm64) is required; current architecture: $(uname -m)." >&2
+            exit 2
+          fi
+          command -v cargo >/dev/null || { echo "Rust is required. Install it from https://rustup.rs" >&2; exit 2; }
+          command -v cmake >/dev/null || { echo "CMake is required (for SDL3). Install with: brew install cmake" >&2; exit 2; }
+          cargo build -p skate-game --bin skate3rust --release --no-default-features "$@"
+          echo "Built: target/release/skate3rust"
+          SH
+          chmod +x scripts/build-macos.sh
+
+          cat > PLAY.command <<'SH'
+          #!/bin/bash
+          set -euo pipefail
+          cd "$(dirname "$0")"
+          if [[ ! -x target/release/skate3rust ]]; then
+            ./scripts/build-macos.sh
+          fi
+          exec ./target/release/skate3rust --assets assets "$@"
+          SH
+          chmod +x PLAY.command
+
+          cat >> README.md <<'MD'
+
+          ## macOS Apple Silicon port
+
+          This fork adds an ARM64 macOS build path for Apple Silicon Macs (M1/M2/M3/M4 and later ARM64 Macs).
+
+          Prerequisites: Rust stable and CMake. With Homebrew, install CMake with `brew install cmake`, then run:
+
+          ```bash
+          ./scripts/build-macos.sh
+          ```
+
+          The executable is written to `target/release/skate3rust`. `PLAY.command` builds it when needed and launches it with the repository `assets/` directory.
+
+          The native game code, Bevy/Metal renderer, SDL3 controller path, audio DSP, physics, map loading, and mod runtime are built natively for `aarch64-apple-darwin`. The Windows first-run installer/updater helpers are not part of the macOS build; for now, use an already prepared asset directory via `--assets DIRECTORY` or `SKATE3_ASSETS=/path/to/assets`.
+          MD
+
+          git config user.name "macOS port bootstrap"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Add macOS Apple Silicon build path"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPOSITORY}.git"
+          git push --force origin HEAD:main
+
+  compile-native:
+    needs: seed
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Check out imported main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-arm64-bootstrap
+      - name: Verify Apple Silicon runner
+        run: |
+          uname -a
+          test "$(uname -m)" = arm64
+          rustc -Vv
+          cmake --version
+      - name: Check game
+        run: cargo check -p skate-game --bin skate3rust --no-default-features
+      - name: Build game
+        run: cargo build -p skate-game --bin skate3rust --release --no-default-features
