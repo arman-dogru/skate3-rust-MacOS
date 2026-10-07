@@ -1,119 +1,272 @@
 <p align="center">
-  <img src="docs/images/skating-crab.png" alt="Rust crab riding a skateboard" width="480">
+  <img src="docs/images/skating-crab.png" alt="Rust crab riding a skateboard" width="420">
 </p>
 
-# Skate 3 Rust Engine
+<h1 align="center">Skate 3 Rust — macOS Apple Silicon</h1>
 
-A Rust and Bevy skating project built from Skate 3 reverse-engineering research.
-Includes skating, tricks, grinds, offboard movement, difficulty settings and
-`.skate` map support. Gameplay parity is still a work in progress.
+<p align="center">
+  Native macOS ARM64 port of the Skate 3 Rust Engine.<br>
+  Built with Rust, Bevy, SDL3, and Metal.
+</p>
 
-## History
+<p align="center">
+  <a href="https://github.com/arman-dogru/skate3-rust-MacOS/actions/workflows/macos.yml"><img src="https://github.com/arman-dogru/skate3-rust-MacOS/actions/workflows/macos.yml/badge.svg" alt="macOS Apple Silicon CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="GPL-3.0-only"></a>
+</p>
 
-Before this rewrite existed, **dumbad** spent more than two years reverse
-engineering Skate 3 and building the tools needed to understand and work with
-it. That meant countless hours digging through undocumented file formats,
-animation data, and game interaction systems, then testing those discoveries
-in the original game. Much of that work is collected in
-[DumbadsSkate3ModdingTools](https://github.com/Ethanw05/DumbadsSkate3ModdingTools),
-including tools for custom maps, meshes, collision, challenges, and DLC.
+> [!IMPORTANT]
+> This is an experimental engine recreation and macOS port. It is not an official Skate 3 release, does not contain Electronic Arts game assets, and is not affiliated with or endorsed by Electronic Arts.
 
-That research laid the groundwork for this project. Chasm later worked on a
-recompilation and a custom renderer based on dumbad's earlier renderer work,
-before moving into the Rust/Bevy rewrite. The rewrite's development time tells
-only part of the story: the knowledge and tools it relies on took years of
-work to establish.
+## Overview
 
-## AI usage
+This repository ports the open-source Skate 3 Rust Engine to native Apple Silicon macOS.
+The game executable builds directly for `aarch64-apple-darwin`, using Bevy's Metal rendering backend and SDL3 for controller input.
 
-AI coding tools were used to develop this rewrite, but none of it would have
-been possible without dumbad's extraordinary effort to reverse engineer the
-original game. The AI had years of hard-earned research and working tools to
-build on. Describing the project as simply “AI rewriting Skate 3” leaves out
-the work that made it possible in the first place.
+The current engine includes work on skating movement, tricks, grinds, offboard movement, physics, audio, difficulty settings, map loading, mods, networking, and `.skate` map support. Gameplay parity with Skate 3 is still a work in progress.
 
-AI helped turn that knowledge into a new implementation; it does not replace
-credit for discovering how the game works. This is still a work in progress,
-and using original assets or showing working tricks does not mean every
-system behaves exactly like the original.
+### macOS status
 
-## Play
+The Apple Silicon build currently has:
 
-[Download Experimental](https://github.com/SK8-ENGINE/skate-3-rust-engine/releases/tag/experimental).
-Successful `main` builds replace this prerelease. Choose **Latest** in Updates
-for experimental updates; **Stable** is the default.
+- native ARM64 compilation for macOS;
+- a successful `cargo check` of the game executable on an ARM64 macOS runner;
+- a successful optimized release build and link of `skate3rust` on ARM64 macOS;
+- Bevy rendering through Metal;
+- SDL3 controller support;
+- native Rust game, physics, audio, map, mod, and networking crates;
+- continuous macOS build verification through GitHub Actions.
 
-Extract the Windows release ZIP and run `skate3rust.exe`. Select your Skate 3
-Xbox 360 ISO, or select `default.xex` in an extracted game folder. Keep its
-`data` folder alongside it. Setup prepares the skater, animations and all disc maps, then
-starts University. The original scoring and session-marker HUD assets are also
-exported automatically during setup. No Blender, Python or Rust installation is needed.
-ISO extraction needs internet access. The first conversion can take a while.
+The build targets Apple Silicon Macs, including M1, M2, M3, M4, and later ARM64 Macs. Intel Macs are not supported by the supplied build script.
 
-Use a compatible gamepad to play. SDL3 supports Xbox/XInput, PlayStation,
-Switch and generic HID controllers; XInput remains available as a Windows
-fallback. Escape opens graphics, difficulty and map settings. Maps can be
-switched without restarting the game.
+## Requirements
 
-**Skate 3 assets are not included.** Your converted files stay in
-the `data` folder beside your executable. Each freshly unpacked copy runs its
-own setup; it does not adopt another installation. In-place updates refresh
-only changed asset groups.
+You need:
+
+- an Apple Silicon Mac running macOS;
+- Xcode Command Line Tools;
+- Rust stable;
+- CMake;
+- a prepared Skate 3 asset directory.
+
+Install the Apple developer command-line tools:
+
+```bash
+xcode-select --install
+```
+
+Install CMake with Homebrew:
+
+```bash
+brew install cmake
+```
+
+Install Rust from [rustup.rs](https://rustup.rs/) if `cargo` is not already available.
+
+Verify the basic toolchain:
+
+```bash
+uname -m
+rustc -V
+cargo -V
+cmake --version
+```
+
+`uname -m` should report `arm64`.
 
 ## Build
 
-Requires Windows, Rust with the MSVC toolchain, and LLVM installed in its default
-location. Run `BUILD.bat` to build, then `PLAY.bat` to launch the test world.
-`PLAY.bat` opens your saved map (University by default); use the in-game menu to switch maps, or drag a `.skate` file onto `PLAY.bat`. An SDL3-compatible gamepad is required for gameplay;
-Escape opens difficulty and graphics settings.
+Clone the repository:
 
-Development builds use a prepared asset set in `assets/private/` or the
-installed asset directory. `scripts/Build-Release.ps1` builds the portable Windows
-package and requires Python 3.13. GitHub Actions builds `main` automatically;
-numbered releases are published separately.
+```bash
+git clone https://github.com/arman-dogru/skate3-rust-MacOS.git
+cd skate3-rust-MacOS
+```
 
-Custom animations and climbing support remain available, but no custom clips
-are shipped. The included format-demo map is original procedural content.
-
-Implementation notes are in [`docs/`](docs/). Patched Bevy dependencies and
-their licenses are in [`vendor/`](vendor/). This is an unofficial project,
-not affiliated with EA.
-
-## Advanced diagnostics
-
-Windows builds support opt-in [performance timeline capture](docs/performance-tracing.md)
-through the `--trace` CLI option, including optional GPU pass diagnostics.
-
-## License
-
-Copyright (c) 2026 dumbad and the Skate 3 Rust Engine contributors.
-Unless otherwise noted, this project's original code is licensed under the
-[GNU General Public License version 3 only](LICENSE) (`GPL-3.0-only`).
-You may use, modify, and distribute it, including commercially. If you distribute
-a modified version or a binary of the covered software, you must also make its
-corresponding source available under GPLv3 and preserve the required notices.
-
-Third-party code retains its existing licenses and copyright notices, including
-the vendored Bevy crates and tooling under `tools/vendor/`. This license does
-not grant rights to Electronic Arts' game code, data, assets, or trademarks,
-or to content supplied by other map and mod authors.
-
-## macOS Apple Silicon port
-
-This fork adds an ARM64 macOS build path for Apple Silicon Macs (M1/M2/M3/M4 and later ARM64 Macs).
-
-Prerequisites: Rust stable and CMake. With Homebrew, install CMake with `brew install cmake`, then run:
+Build the optimized native macOS executable:
 
 ```bash
 ./scripts/build-macos.sh
 ```
 
-The executable is written to `target/release/skate3rust`. `PLAY.command` builds it when needed and launches it with the repository-local `assets/` directory.
-
-To use a prepared asset directory elsewhere, set `SKATE3_ASSETS` when launching, for example:
+This runs the equivalent of:
 
 ```bash
-SKATE3_ASSETS=/path/to/prepared/assets ./target/release/skate3rust
+cargo build \
+  -p skate-game \
+  --bin skate3rust \
+  --release \
+  --no-default-features
 ```
 
-The native game code, Bevy/Metal renderer, SDL3 controller path, audio DSP, physics, map loading, and mod runtime are built natively for `aarch64-apple-darwin`. The Windows first-run installer/updater helpers are not part of the macOS build yet, so the macOS port currently requires assets prepared by the existing extraction pipeline.
+The resulting executable is:
+
+```text
+target/release/skate3rust
+```
+
+## Game assets
+
+**Skate 3 assets are not included in this repository.**
+
+The upstream Windows distribution contains a first-run setup/extraction pipeline for preparing data from a legally obtained Skate 3 installation. That Windows setup helper is not currently available as a native macOS program.
+
+For macOS, provide an already prepared asset directory.
+
+### Repository-local assets
+
+Place the prepared asset tree at:
+
+```text
+./assets/
+```
+
+Then launch with:
+
+```bash
+./PLAY.command
+```
+
+`PLAY.command` automatically builds the release executable if it does not exist and launches the game using the repository-local `assets/` directory.
+
+### External asset directory
+
+To keep assets elsewhere, set `SKATE3_ASSETS`:
+
+```bash
+SKATE3_ASSETS="/absolute/path/to/assets" \
+  ./target/release/skate3rust
+```
+
+The path must point to an existing prepared asset directory.
+
+## Running directly
+
+With repository-local assets:
+
+```bash
+./target/release/skate3rust --assets
+```
+
+With an external asset directory:
+
+```bash
+SKATE3_ASSETS="/absolute/path/to/assets" \
+  ./target/release/skate3rust
+```
+
+For day-to-day use on macOS, `./PLAY.command` is the simplest launcher.
+
+## Controls
+
+Gameplay is designed around a compatible gamepad. Controller input is handled through SDL3, which supports common Xbox, PlayStation, Switch, and generic HID controllers supported by SDL on macOS.
+
+Press `Escape` in-game to access available graphics, gameplay, difficulty, and map settings.
+
+## Development
+
+For a fast source-level validation without producing an optimized binary:
+
+```bash
+cargo check -p skate-game --bin skate3rust --no-default-features
+```
+
+For the release build:
+
+```bash
+cargo build -p skate-game --bin skate3rust --release --no-default-features
+```
+
+The workspace currently contains:
+
+```text
+crates/
+├── skate-core
+├── skate-audio
+├── skate-audio-fma
+├── skate-data
+├── skate-game
+├── skate-dynamics
+├── skate-mods
+├── skate-net
+└── skate-steam-relay
+```
+
+The workspace also carries patched dependencies under `vendor/`, including patched Bevy rendering crates and `sdl3-sys`.
+
+## Continuous integration
+
+`.github/workflows/macos.yml` verifies the Apple Silicon build on an ARM64 macOS runner.
+
+CI performs:
+
+```text
+cargo check -p skate-game --bin skate3rust --no-default-features
+cargo build -p skate-game --bin skate3rust --release --no-default-features
+```
+
+It also runs library tests across the portable engine crates and uploads the resulting ARM64 `skate3rust` executable as a workflow artifact when the job succeeds.
+
+## Current limitations
+
+This port is functional at the compilation and native-linking level, but it is not yet a polished macOS distribution.
+
+Known gaps include:
+
+- no native macOS replacement for the Windows first-run asset extractor/setup helper;
+- no signed or notarized `.app` bundle;
+- no macOS installer or automatic updater;
+- no Intel/x86_64 macOS support in the supplied build path;
+- gameplay and rendering parity with the original game remain incomplete;
+- some upstream tooling is still Windows-specific.
+
+The immediate macOS development path is therefore: build the ARM64 executable, provide prepared assets, run, test, and replace remaining Windows assumptions as they are encountered.
+
+## Upstream and research credits
+
+This fork is based on the work in [`SK8-ENGINE/skate-3-rust-engine`](https://github.com/SK8-ENGINE/skate-3-rust-engine).
+
+The project depends heavily on years of Skate 3 reverse-engineering research and tooling by **dumbad**, including work collected in [`DumbadsSkate3ModdingTools`](https://github.com/Ethanw05/DumbadsSkate3ModdingTools). That research established much of the knowledge required to understand Skate 3's data formats, maps, animation data, collision, challenges, DLC, and other game systems.
+
+Additional upstream work includes renderer, recompilation, engine, tooling, and Rust/Bevy development by the Skate 3 Rust Engine contributors, including Chasm and other contributors credited by the upstream project history.
+
+This macOS repository should be understood as a platform port and continuation of that work, not as an independent reverse-engineering effort.
+
+## Contributing
+
+Contributions that improve the macOS port are useful, particularly in these areas:
+
+- removing Windows-only assumptions from shared code;
+- macOS asset setup and extraction;
+- `.app` bundle generation;
+- code signing and notarization support;
+- Metal rendering issues;
+- SDL3 controller behavior on macOS;
+- filesystem and path portability;
+- native networking behavior;
+- automated tests on Apple Silicon.
+
+Before submitting a change, run at minimum:
+
+```bash
+cargo check -p skate-game --bin skate3rust --no-default-features
+```
+
+On Apple Silicon, also run:
+
+```bash
+./scripts/build-macos.sh
+```
+
+## Legal
+
+This repository does not distribute Skate 3 game data, Electronic Arts code, copyrighted game assets, or trademarks.
+
+You are responsible for obtaining and using any required game data lawfully. The project's source-code license does not grant rights to Electronic Arts content or to third-party map, mod, audio, image, or other copyrighted assets.
+
+Skate, Skate 3, Electronic Arts, EA, and related names and marks belong to their respective owners.
+
+## License
+
+Unless otherwise noted, the project's original source code is licensed under the **GNU General Public License v3.0 only** (`GPL-3.0-only`). See [`LICENSE`](LICENSE).
+
+Third-party and vendored components retain their own copyright notices and licenses.
